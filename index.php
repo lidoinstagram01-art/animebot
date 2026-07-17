@@ -1,8 +1,18 @@
 <?php
 ob_start();
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
 
 // 1. Telegramdan kelgan so'rovni Render va Telegram uchun xavfsiz qabul qilish
-$u = json_decode(file_get_contents('php://input'));
+$input = file_get_contents('php://input');
+$u = json_decode($input);
+
+if (!$u) {
+    // Agar to'g'ridan-to'g'ri brauzerdan kirilsa, server tirikligini ko'rsatadi
+    echo "Bot is running perfectly!";
+    exit();
+}
+
 $msg = $u->message ?? $u->callback_query->message ?? null;
 $cid = $msg->chat->id ?? null;
 $mid = $msg->message_id ?? null;
@@ -17,7 +27,7 @@ $photo = $msg->photo ?? null;
 $file = $photo ? $photo[count($photo)-1]->file_id : null;
 
 $ITACHI_UCHIHA_SONO_SHARINGAN = "6200478850";
-$b = "animebot_k6e9_bot"; // Bu yerga botingiz usernamesini @ siz yozing
+$b = "animebot_k6e9_bot"; 
 
 // 2. Telegram API bilan ishlovchi yagona xavfsiz cURL funksiyasi
 function bot($m, $d = []) {
@@ -27,7 +37,9 @@ function bot($m, $d = []) {
     curl_setopt_array($c, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => (isset($d['photo']) && $d['photo'] instanceof CURLFile) ? $d : http_build_query($d)
+        CURLOPT_POSTFIELDS => (isset($d['photo']) && $d['photo'] instanceof CURLFile) ? $d : http_build_query($d),
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 10
     ]);
     $r = curl_exec($c);
     curl_close($c);
@@ -42,19 +54,18 @@ function e($i, $m, $t, $k = null) {
     bot('editMessageText', ['chat_id' => $i, 'message_id' => $m, 'text' => $t, 'reply_markup' => $k, 'parse_mode' => 'html']);
 }
 
-function del() {
-    global $last_chat_id, $last_message_id;
-    if ($last_chat_id && $last_message_id) bot('deleteMessage', ['chat_id' => $last_chat_id, 'message_id' => $last_message_id]);
-}
-
-// 3. Agar foydalanuvchidan yoki tugmadan so'rov kelsa, jarayonni boshlaymiz
+// 3. Jarayonni boshlaymiz
 if ($cid || $ccid) {
     try {
-        // Ideal sozlangan pdo.php ni shu yerda ulaymiz
+        // Ma'lumotlar omborini ulash
+        if (!file_exists("pdo.php")) {
+            throw new Exception("pdo.php fayli topilmadi!");
+        }
         include "pdo.php";
 
-        // Ma'lumotlar omboridan foydalanuvchini tekshiramiz
         $current_id = $cid ?? $ccid;
+        
+        // Foydalanuvchini tekshirish
         $stmt = $pdo->prepare("SELECT status, balance, vip_time FROM users WHERE user_id = :cid");
         $stmt->execute(['cid' => $current_id]);
         $rel = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -69,30 +80,22 @@ if ($cid || $ccid) {
             $end_vip_time = $rel['vip_time'];
         }
 
-        // Papka va fayllarni tekshirish
+        // Papkalarni tekshirish
         if(!is_dir("step")) mkdir("step", 0777, true);
         if(!is_dir("data")) mkdir("data", 0777, true);
         
         $step = file_exists("step/$current_id.step") ? file_get_contents("step/$current_id.step") : '';
-        
-        $ads = file_exists("data/ads.txt") ? file_get_contents("data/ads.txt") : '';
         $share_i = file_exists("data/share.txt") ? file_get_contents("data/share.txt") : 'false';
-        $anime_channel = file_exists("data/channel.txt") ? file_get_contents("data/channel.txt") : '@KinoLiveUz';
-        $help = file_exists("data/help.txt") ? file_get_contents("data/help.txt") : '';
         $situation = file_exists("data/situation.txt") ? file_get_contents("data/situation.txt") : 'On';
 
         if ($txt) {
             if ($situation == "Off" && $current_id != $ITACHI_UCHIHA_SONO_SHARINGAN) {
-                bot('sendMessage', [
-                    'chat_id' => $current_id,
-                    'text' => "⚠️ <b>Bot vaqtincha ishlamayapti!</b>\n\n<i>Hozirda texnik ishlar olib borilmoqda. Iltimos, keyinroq urinib ko'ring.</i> ✅",
-                    'parse_mode' => 'HTML',
-                ]);
+                s($current_id, "⚠️ <b>Bot vaqtincha ishlamayapti!</b>\n\n<i>Hozirda texnik ishlar olib borilmoqda. Iltimos, keyinroq urinib ko'ring.</i> ✅");
                 exit();
             }
         }
 
-        // Qolgan funksiyalar
+        // Yordamchi funksiyalar
         function addUser($user_id) {
             global $pdo;
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE user_id = :user_id");
@@ -117,7 +120,7 @@ if ($cid || $ccid) {
                 $id = "-100" . $c['channelId'];
                 $chatMember = bot('getChatMember', ['chat_id' => $id, 'user_id' => $u]);
                 $res_status = $chatMember->result->status ?? 'left';
-                $title = bot('getChat', ['chat_id' => $id])->result->title ?? explode('/', $c['channelLink'])[3];
+                $title = "Kanal " . ($i + 1);
                 $k['inline_keyboard'][$i][0] = ['text' => in_array($res_status, ['creator', 'administrator', 'member']) ? "✅ $title" : "❌ $title", 'url' => $c['channelLink']];
                 $f = $f || !in_array($res_status, ['creator', 'administrator', 'member']);
             }
@@ -132,20 +135,8 @@ if ($cid || $ccid) {
         function showMainMenu($chat_id, $message_id = null) {
             $keyboard = [[['text' => '🔎 Anime izlash']], [['text' => '💎 Premium +'], ['text' => '👤 Hisobim']], [['text' => '✉️ Adminga murojaat']]];
             $reply_markup = json_encode(['keyboard' => $keyboard, 'resize_keyboard' => true]);
-            $start_text = file_exists("data/start.txt") ? file_get_contents("data/start.txt") : '❄️';
+            $start_text = file_exists("data/start.txt") ? file_get_contents("data/start.txt") : "👋 Xush kelibsiz! Botimiz orqali sevimli animelaringizni topishingiz mumkin.";
             $message_id ? e($chat_id, $message_id, $start_text, $reply_markup) : s($chat_id, $start_text, $reply_markup);
-        }
-
-        function showAdminPanel($chat_id, $message_id = null) {
-            $k = json_encode(['inline_keyboard' => [
-                [['text' => '🔧 Asosiy sozlamlar', 'callback_data' => 'main_settings']],
-                [['text' => '🎥 Anime sozlamlari', 'callback_data' => 'anime_settings'],['text' => '📝 Post tayyorlash', 'callback_data' => 'createPost']],
-                [['text' => '📣 Kanallar', 'callback_data' => 'channel_settings'],['text' => '📈 Statistika', 'callback_data' => 'stats']],
-                [['text' => '✉️ Xabar yuborish', 'callback_data' => 'sendMessage']],
-                [['text' => "👥 Foydalanuvchilarni boshqarish ", 'callback_data' => 'user_settings']]
-            ]]);
-            $message = "👨‍💼 <b>Admin panelga xush kelibsiz</b>\nBu yerda botni boshqarishingiz mumkin.";
-            $message_id ? e($chat_id, $message_id, $message, $k) : s($chat_id, $message, $k);
         }
 
         function search($type, $id, $message_id = null) {
@@ -155,78 +146,49 @@ if ($cid || $ccid) {
                 [['text'=>"🔢 Kod orqali",'callback_data'=>"SearchByCode"],['text'=>"💎 Janr orqali",'callback_data'=>"searchByGenre"]],
                 [['text' => '🔙 Ortga', 'callback_data' => 'back']]]]);
             ($type == 'e' && $message_id) ? e($id, $message_id, $txt_search, $k) : s($id, $txt_search, $k);
-            exit();
-        }
-
-        function sendToUser($admin_id, $user_id, $message) {
-            if (!in_array($message, ['/start', '/panel', '/admin', '/search', '/rek', '/help', '/dev'])) {
-                bot('sendMessage', ['chat_id' => $user_id, 'text' => $message, 'parse_mode' => 'html']);
-                s($admin_id, "✅ Xabar muvaffaqiyatli yuborildi!");
-            } else {
-                s($admin_id, "❌ Komanda yuborish mumkin emas!");
-            }
-        }
-
-        function broadcastMessage($admin_id, $message, $is_forward = false, $forward_mid = null) {
-            global $pdo;
-            if (!$is_forward && in_array($message, ['/start', '/panel', '/admin', '/search', '/rek', '/help', '/dev'])) {
-                s($admin_id, "❌ Komanda yuborish mumkin emas!");
-                return;
-            }
-
-            $users = $pdo->query("SELECT user_id FROM users")->fetchAll(PDO::FETCH_COLUMN);
-            $total = count($users);
-            $sent = 0;
-
-            $msg_status = bot('sendMessage', ['chat_id' => $admin_id, 'text' => "Xabar yuborish boshlandi:\nXabar yuborilmoqda...\nYuborildi: 0/$total"]);
-            $msg_id = $msg_status->result->message_id;
-
-            foreach ($users as $user_id) {
-                if ($is_forward && $forward_mid) {
-                    bot('forwardMessage', ['chat_id' => $user_id, 'from_chat_id' => $admin_id, 'message_id' => $forward_mid]);
-                } else {
-                    bot('sendMessage', ['chat_id' => $user_id, 'text' => $message, 'parse_mode' => 'html']);
-                }
-                $sent++;
-                if ($sent % 15 == 0 || $sent == $total) {
-                    e($admin_id, $msg_id, "Xabar yuborish boshlandi:\nXabar yuborilmoqda...\nYuborildi: $sent/$total");
-                    usleep(50000); 
-                }
-            }
-            e($admin_id, $msg_id, "Xabar yuborish yakunlandi:\nYuborildi: $sent/$total");
         }
 
         // =========================================================================
-        // 🌟 BOT SHARTLARI VA LOGIKALARI BOSHLANISHI 🌟
+        // ✨ BOT LOGIKASI
         // =========================================================================
 
         if ($txt == "/start") {
-            unlink("step/$cid.step");
+            @unlink("step/$cid.step");
             addUser($fid);
-            jc($cid) && showMainMenu($cid);
-            exit();
-        }
-        
-        $back = json_encode([
-            'inline_keyboard'=>[
-                [['text' => '🔙 Ortga', 'callback_data' => 'back']]
-            ]
-        ]);
-
-        if (($txt == "/search" || $txt == "🔎 Anime izlash") && jc($cid) == 1) {
-            if ($txt == "🔎 Anime izlash") {
-                search('s', $cid);
-            } else {
-                search('e', $ccid, $cmid);
+            if (jc($cid)) {
+                showMainMenu($cid);
             }
             exit();
         }
 
-        if ((mb_stripos($txt, "/start ") !== false) && jc($cid) == 1) {
-            $id = str_replace('/start ', '', $txt);
-            if (jc($ccid) == 1) {
+        if ($d == 'c') {
+            if (jc($ccid)) {
+                bot('deleteMessage', ['chat_id' => $ccid, 'message_id' => $cmid]);
+                showMainMenu($ccid);
+            }
+            exit();
+        }
+        
+        $back = json_encode(['inline_keyboard'=>[[['text' => '🔙 Ortga', 'callback_data' => 'back']]]]);
+
+        if ($d == 'back') {
+            @unlink("step/$ccid.step");
+            showMainMenu($ccid, $cmid);
+            exit();
+        }
+
+        if ($txt == "/search" || $txt == "🔎 Anime izlash") {
+            if (jc($cid)) {
+                search('s', $cid);
+            }
+            exit();
+        }
+
+        if (mb_stripos($txt, "/start ") !== false) {
+            $id = trim(str_replace('/start ', '', $txt));
+            if (jc($cid)) {
                 if (!ctype_digit($id)) {
-                    s($ccid, "Noto‘g‘ri anime ID!");
+                    s($cid, "❌ Noto‘g‘ri anime ID!");
                     exit();
                 }
 
@@ -241,100 +203,49 @@ if ($cid || $ccid) {
                     
                     if ($epizodlar) {
                         foreach ($epizodlar as $episode) {
-                            $caption = "🍿 *{$rel['name']}* 🍿\n";
+                            $caption = "🍿 <b>{$rel['name']}</b> 🍿\n";
                             $caption .= "✨───────────────✨\n";
-                            $caption .= "🎥 *Qism:* {$episode['episode']} / {$rel['episode']}\n";
+                            $caption .= "🎥 <b>Qism:</b> {$episode['episode']} / {$rel['episode']}\n";
                             $caption .= "✨───────────────✨\n";
-                            $caption .= "🎬 *Anime ID:* {$id}\n";
-                            $caption .= "📜 *Til:* {$rel['language']}";
+                            $caption .= "🎬 <b>Anime ID:</b> {$id}\n";
+                            $caption .= "📜 <b>Til:</b> {$rel['language']}";
 
                             bot('sendVideo', [
-                                'chat_id' => $ccid,
+                                'chat_id' => $cid,
                                 'video' => $episode['anime'],
                                 'caption' => $caption,
-                                'parse_mode' => 'Markdown',
-                                'protect_content' => $share_i,
-                                'reply_markup'=>json_encode([
-                                    'inline_keyboard'=>[
-                                        [['text'=>"Dasturchi",'url'=>"https://t.me/ITACHI_UCHIHA_SONO_SHARINGAN"]],
-                                    ]
-                                ]),
+                                'parse_mode' => 'HTML',
+                                'protect_content' => ($share_i == 'true') ? true : false,
                             ]);
                         }
-                        unlink("step/$ccid.step");
+                        @unlink("step/$cid.step");
                     } else {
-                        s($ccid, "Bu animeda qismlar topilmadi!");
-                        exit();
+                        s($cid, "⚠️ Bu animeda hozircha qismlar joylanmagan.");
                     }
                 } else {
-                    s($ccid, "Bu anime topilmadi!");
+                    s($cid, "❌ Bu ID ostida anime topilmadi.");
                 }
             }
+            exit();
         }
 
         if($d == 'SearchByName'){
-            e($ccid, $cmid, "🔎 <b>Anime nomini kiriting!</b>\n\n📌 <i>Iltimos, anime nomini aniq va xatolarsiz kiriting:</i>\n\n📝 <b>Namuna:</b> <code>Naruto Shippuden</code>");
+            e($ccid, $cmid, "🔎 <b>Anime nomini kiriting!</b>\n\n📌 <i>Iltimos, anime nomini aniq va xatolarsiz kiriting:</i>\n\n📝 <b>Namuna:</b> <code>Naruto</code>", $back);
             file_put_contents("step/$ccid.step", 'searchname');
+            exit();
         }
 
-        if($step == 'searchname'){
-            if($txt != ''){
-                $stmt = $pdo->prepare("SELECT * FROM anime WHERE name LIKE ?");
-                $stmt->execute(["%$txt%"]);
-                $animes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if($step == 'searchname' && $txt != ''){
+            $stmt = $pdo->prepare("SELECT * FROM anime WHERE name LIKE ? LIMIT 10");
+            $stmt->execute(["%$txt%"]);
+            $animes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-                if($animes){
-                    foreach($animes as $anime){
-                        $caption = "📺 <b>{$anime['name']}</b> 📺\n";
-                        $caption .= "━━━━━━━━━━━━━━━━━━\n";
-                        $caption .= "🎭 <b>Janr:</b> {$anime['genre']}\n";
-                        $caption .= "🎬 <b>Epizodlar:</b> {$anime['episode']}\n";
-                        $caption .= "📝 <b>Tavsif:</b> <i>{$anime['description']}</i>\n";
-                        $caption .= "━━━━━━━━━━━━━━━━━━\n";
-                        $caption .= "🔗 <b>Anime ID:</b> {$anime['id']}";
-
-                        bot('sendPhoto', [
-                            'chat_id' => $cid,
-                            'photo' => $anime['image'],
-                            'caption' => $caption,
-                            'parse_mode' => 'HTML',
-                            'reply_markup' => json_encode([
-                                'inline_keyboard' => [
-                                    [['text' => "▶️ Tomosha qilish", 'url' => "https://t.me/$b?start={$anime['id']}"]],
-                                    [['text'=>"Dasturchi",'url'=>"https://t.me/ITACHI_UCHIHA_SONO_SHARINGAN"]]
-                                ]
-                            ]),
-                        ]);
-                    }
-                } else {
-                    s($cid, "❌ <b>Anime topilmadi!</b>\n\n🔍 Iltimos, anime nomini to‘g‘ri kiriting yoki boshqa variantni sinab ko‘ring.", "html");
-                }
-            }
-            unlink("step/$cid.step");
-        }
-
-        if($d == 'SearchByCode'){
-            e($ccid, $cmid, "🔎 <b>Anime kodini kiriting!</b>\n\n📌 <i>Iltimos, anime kodini faqat raqamlarda kiriting:</i>\n\n📝 <b>Namuna:</b> <code>99</code>",$back);
-            file_put_contents("step/$cid.step", 'searchcode');
-        }
-
-        if($step == 'searchcode'){
-            if($txt != ''){
-                if (!ctype_digit($txt)) {
-                    s($cid, "⚠️ <b>Faqat raqam kiriting!</b>\n\n🔢 Namuna: <code>99</code>",$back);
-                    exit();
-                }
-
-                $stmt = $pdo->prepare("SELECT * FROM anime WHERE id = ?");
-                $stmt->execute([$txt]);
-                $anime = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                if($anime){
+            if($animes){
+                foreach($animes as $anime) {
                     $caption = "📺 <b>{$anime['name']}</b> 📺\n";
                     $caption .= "━━━━━━━━━━━━━━━━━━\n";
                     $caption .= "🎭 <b>Janr:</b> {$anime['genre']}\n";
                     $caption .= "🎬 <b>Epizodlar:</b> {$anime['episode']}\n";
-                    $caption .= "📝 <b>Tavsif:</b> <i>{$anime['description']}</i>\n";
                     $caption .= "━━━━━━━━━━━━━━━━━━\n";
                     $caption .= "🔗 <b>Anime ID:</b> {$anime['id']}";
 
@@ -345,77 +256,101 @@ if ($cid || $ccid) {
                         'parse_mode' => 'HTML',
                         'reply_markup' => json_encode([
                             'inline_keyboard' => [
-                                [['text' => "▶️ Tomosha qilish", 'url' => "https://t.me/$b?start={$anime['id']}"]],
-                                [['text'=>"Dasturchi",'url'=>"https://t.me/ITACHI_UCHIHA_SONO_SHARINGAN"]]
+                                [['text' => "▶️ Tomosha qilish", 'url' => "https://t.me/$b?start={$anime['id']}"]]
                             ]
                         ]),
                     ]);
-                    unlink("step/$cid.step"); 
-                } else {
-                    s($cid, "❌ <b>Anime topilmadi!</b>\n\n🔍 Iltimos, anime kodini to‘g‘ri kiriting yoki boshqa variantni sinab ko‘ring.", "html");
                 }
+                @unlink("step/$cid.step");
+            } else {
+                s($cid, "❌ <b>Anime topilmadi!</b>\n\n🔍 Boshqa nom kiritib ko'ring.", $back);
             }
+            exit();
         }
 
-        if($d == 'searchByGenre'){
-            e($ccid, $cmid, "🔎 <b>Anime janrini kiriting!</b>\n\n📌 <i>Masalan: Action, Comedy, Drama...</i>",$back);
-            file_put_contents("step/$cid.step", 'searchgenre');
+        if($d == 'SearchByCode'){
+            e($ccid, $cmid, "🔎 <b>Anime kodini kiriting!</b>\n\n📝 <b>Namuna:</b> <code>1</code>", $back);
+            file_put_contents("step/$ccid.step", 'searchcode');
+            exit();
         }
 
-        if($step == 'searchgenre'){
-            if($txt != ''){
-                $stmt = $pdo->prepare("SELECT * FROM anime WHERE genre LIKE ? LIMIT 10");
-                $stmt->execute(["%$txt%"]);
-                $animes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-                if($animes){
-                    $keyboard = [];
-                    foreach($animes as $anime){
-                        $keyboard[] = [['text' => "📺 {$anime['name']}", 'callback_data' => "anime_{$anime['id']}"]];
-                    }
-
-                    bot('sendMessage', [
-                        'chat_id' => $cid,
-                        'text' => "🎭 <b>{$txt}</b> janriga mos animelar:\n\n📌 <i>Pastdan tanlang:</i>",
-                        'parse_mode' => 'HTML',
-                        'reply_markup' => json_encode(['inline_keyboard' => $keyboard]),
-                    ]);
-                    unlink("step/$cid.step");
-                } else {
-                    s($cid, "❌ <b>Bu janr bo‘yicha anime topilmadi!</b>\n\n🔍 Iltimos, boshqa janr kiriting.", "html");
-                }
+        if($step == 'searchcode' && $txt != ''){
+            if (!ctype_digit($txt)) {
+                s($cid, "⚠️ <b>Faqat raqam kiriting!</b>", $back);
+                exit();
             }
-        }
 
-        if(strpos($d, "anime_") !== false){
-            $anime_id = str_replace("anime_", "", $d);
             $stmt = $pdo->prepare("SELECT * FROM anime WHERE id = ?");
-            $stmt->execute([$anime_id]);
+            $stmt->execute([$txt]);
             $anime = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if($anime){
-                $caption = "📺 <b>{$anime['name']}</b> 📺\n";
-                $caption .= "━━━━━━━━━━━━━━━━━━\n";
-                $caption .= "🎭 <b>Janr:</b> {$anime['genre']}\n";
-                $caption .= "🎬 <b>Epizodlar:</b> {$anime['episode']}\n";
-                $caption .= "📝 <b>Tavsif:</b> <i>{$anime['description']}</i>\n";
-                $caption .= "━━━━━━━━━━━━━━━━━━\n";
-                $caption .= "🔗 <b>Anime ID:</b> {$anime['id']}";
-
+                $caption = "📺 <b>{$anime['name']}</b> 📺\n━━━━━━━━━━━━━━━━━━\n🔗 <b>Anime ID:</b> {$anime['id']}";
                 bot('sendPhoto', [
                     'chat_id' => $cid,
                     'photo' => $anime['image'],
                     'caption' => $caption,
                     'parse_mode' => 'HTML',
                     'reply_markup' => json_encode([
-                        'inline_keyboard' => [
-                            [['text' => "▶️ Tomosha qilish", 'url' => "https://t.me/$b?start={$anime['id']}"]],
-                            [['text'=>"Dasturchi",'url'=>"https://t.me/ITACHI_UCHIHA_SONO_SHARINGAN"]]
-                        ]
+                        'inline_keyboard' => [[['text' => "▶️ Tomosha qilish", 'url' => "https://t.me/$b?start={$anime['id']}"]]]
                     ]),
                 ]);
+                @unlink("step/$cid.step"); 
+            } else {
+                s($cid, "❌ <b>Bu kod bilan anime topilmadi!</b>", $back);
             }
+            exit();
         }
 
-        if ($txt == "/dev" && jc($cid) == 1) {
-            s($cid, "👨‍💻 Bot dasturchisi: @ITACHI_UCHIHA_SONO_SHARINGAN\nShuncha mexnatimni hurmat qilasizlar degan umi
+        if($d == 'searchByGenre'){
+            e($ccid, $cmid, "🔎 <b>Anime janrini kiriting!</b>\n\n📌 <i>Masalan: Komediya, Jangovar...</i>", $back);
+            file_put_contents("step/$ccid.step", 'searchgenre');
+            exit();
+        }
+
+        if($step == 'searchgenre' && $txt != ''){
+            $stmt = $pdo->prepare("SELECT * FROM anime WHERE genre LIKE ? LIMIT 15");
+            $stmt->execute(["%$txt%"]);
+            $animes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if($animes){
+                $keyboard = [];
+                foreach($animes as $anime){
+                    $keyboard[] = [['text' => "📺 {$anime['name']}", 'url' => "https://t.me/$b?start={$anime['id']}"]];
+                }
+                $keyboard[] = [['text' => '🔙 Ortga', 'callback_data' => 'back']];
+
+                bot('sendMessage', [
+                    'chat_id' => $cid,
+                    'text' => "🎭 <b>{$txt}</b> janridagi animelar:",
+                    'parse_mode' => 'HTML',
+                    'reply_markup' => json_encode(['inline_keyboard' => $keyboard]),
+                ]);
+                @unlink("step/$cid.step");
+            } else {
+                s($cid, "❌ <b>Bu janr bo‘yicha anime topilmadi!</b>", $back);
+            }
+            exit();
+        }
+
+        if ($txt == "/dev") {
+            s($cid, "👨‍💻 Bot dasturchisi: @ITACHI_UCHIHA_SONO_SHARINGAN", json_encode(['inline_keyboard' => [[['text' => '🔙 Ortga', 'callback_data' => 'back']]]]));
+            exit();
+        }
+
+        if($txt == "💎 Premium +" || $txt == "👤 Hisobim" || $txt == "✉️ Adminga murojaat"){
+            s($cid, "ℹ️ Bu bo'lim hozircha sozlanmoqda...");
+            exit();
+        }
+
+    } catch (Exception $e) {
+        $current_chat = $cid ?? $ccid;
+        bot('sendMessage', [
+            'chat_id' => $current_chat,
+            'text' => "⚠️ <b>Tizimda xatolik:</b>\n<code>" . htmlspecialchars($e->getMessage()) . "</code>",
+            'parse_mode' => 'html'
+        ]);
+    }
+    exit();
+}
+?>
