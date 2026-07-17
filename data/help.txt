@@ -1,0 +1,17 @@
+ℹ️ Yordam bo‘limi
+
+👋 Assalomu alaykum! Ushbu bot orqali kino qidirish, reklama joylashtirish, va dasturchi haqida ma'lumot olish imkoniyatiga egasiz.
+
+🔹 📌 Asosiy buyruqlar:
+🎬 Kino qidirish: /search – Istalgan kinoni osongina toping!
+📢 Reklama berish: /rek – O‘z mahsulot yoki xizmatingizni reklama qiling!
+👨‍💻 Dasturchi haqida ma'lumot: /dev – Botni kim yaratganini bilib oling!
+
+🔹 🎬 Kino qidirish (Inline usulida):
+Siz kinoni inline orqali qidirishingiz mumkin! @bot_username Kino nomi deb yozing va bot sizga mos variantlarni taklif qiladi.
+
+🔹 📞 Qo‘llab-quvvatlash:
+Agar sizga qo‘shimcha yordam kerak bo‘lsa, admin bilan bog‘laning:
+📩 @ITACHI_UCHIHA_SONO_SHARINGAN
+
+✅ Botdan samarali foydalaning va zavq oling! 😊
