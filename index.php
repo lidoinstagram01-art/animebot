@@ -3,12 +3,11 @@ ob_start();
 ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 
-// 1. Telegramdan kelgan so'rovni Render va Telegram uchun xavfsiz qabul qilish
+// 1. Telegramdan kelgan so'rovni xavfsiz qabul qilish
 $input = file_get_contents('php://input');
 $u = json_decode($input);
 
 if (!$u) {
-    // Agar to'g'ridan-to'g'ri brauzerdan kirilsa, server tirikligini ko'rsatadi
     echo "Bot is running perfectly!";
     exit();
 }
@@ -29,7 +28,7 @@ $file = $photo ? $photo[count($photo)-1]->file_id : null;
 $ITACHI_UCHIHA_SONO_SHARINGAN = "6200478850";
 $b = "animebot_k6e9_bot"; 
 
-// 2. Telegram API bilan ishlovchi yagona xavfsiz cURL funksiyasi
+// 2. Telegram API bilan ishlovchi yagona cURL funksiyasi
 function bot($m, $d = []) {
     $token = "8620310081:AAF3owdfWq4A8nJR1DF3LWPonZyFCm3tr0w";
     $u = "https://api.telegram.org/bot" . $token . "/" . $m;
@@ -57,7 +56,6 @@ function e($i, $m, $t, $k = null) {
 // 3. Jarayonni boshlaymiz
 if ($cid || $ccid) {
     try {
-        // Ma'lumotlar omborini ulash
         if (!file_exists("pdo.php")) {
             throw new Exception("pdo.php fayli topilmadi!");
         }
@@ -65,20 +63,15 @@ if ($cid || $ccid) {
 
         $current_id = $cid ?? $ccid;
         
-        // Foydalanuvchini tekshirish
-        $stmt = $pdo->prepare("SELECT status, balance, vip_time FROM users WHERE user_id = :cid");
+        // 🛠 BAZADAGI XATOLIKNI AYLANIB O'TISH: Faqat bor ustunni tekshiramiz
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :cid");
         $stmt->execute(['cid' => $current_id]);
         $rel = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        $status = "Simple";
-        $balance = 0;
-        $end_vip_time = "00.00.0000 00:00";
-        
-        if($rel){
-            $status = $rel['status'];
-            $balance = $rel['balance'];
-            $end_vip_time = $rel['vip_time'];
-        }
+        // Agar ustunlar bazada yo'q bo'lsa, xato bermasligi uchun default qiymat beramiz
+        $status = $rel['status'] ?? "Simple";
+        $balance = $rel['balance'] ?? 0;
+        $end_vip_time = $rel['vip_time'] ?? "00.00.0000 00:00";
 
         // Papkalarni tekshirish
         if(!is_dir("step")) mkdir("step", 0777, true);
@@ -95,13 +88,14 @@ if ($cid || $ccid) {
             }
         }
 
-        // Yordamchi funksiyalar
+        // 🛠 Xavfsiz addUser funksiyasi (baza tuzilishidan qat'iy nazar xato bermaydi)
         function addUser($user_id) {
             global $pdo;
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE user_id = :user_id");
             $stmt->execute(['user_id' => $user_id]);
             if ($stmt->fetchColumn() == 0) {
-                $stmt = $pdo->prepare("INSERT INTO users (user_id, date, status, balance, vip_time) VALUES (:user_id, NOW(), 'Simple', '0', '00.00.0000 00:00')");
+                // Faqat user_id va aniq bor bo'lgan date ustuniga yozamiz
+                $stmt = $pdo->prepare("INSERT INTO users (user_id, date) VALUES (:user_id, NOW())");
                 $stmt->execute(['user_id' => $user_id]);
             }
         }
